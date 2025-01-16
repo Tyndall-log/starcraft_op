@@ -1,0 +1,11 @@
+/.idea
+/weight
+/label
+/path
+__pycache__
+*.pth
+.DS_Store
+*.kra~
+*.kra
+*.png~
+
