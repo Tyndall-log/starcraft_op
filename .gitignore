@@ -1,8 +1,11 @@
 __pycache__
 /.idea
+/.vscode
 /label
 /path
-/weight
+/weight/**
+!/.vscode/settings.json
+!/weight/u-mobileone_s0.pth
 !/weight/u-resnet18.pth
 .DS_Store
 *.kra~
