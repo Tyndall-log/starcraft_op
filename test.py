@@ -9,7 +9,7 @@ import time
 # 모델 로드
 # model = lraspp_mobilenet_v3_large(pretrained=True)
 model = lraspp_mobilenet_v3_large(pretrained=True)
-# model.to("mps")
+# model.to("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 model.eval()
 
 # 이미지 전처리
@@ -27,7 +27,10 @@ preprocess = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 input_tensor = preprocess(image).unsqueeze(0)
-# input_tensor = input_tensor.to("mps")
+# input_tensor = input_tensor.to(
+#     "cuda" if torch.cuda.is_available() else
+#     ("mps" if torch.backends.mps.is_available() else "cpu")
+# )
 
 # 추론
 with torch.no_grad():

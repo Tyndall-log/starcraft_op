@@ -1,7 +1,9 @@
+__pycache__
 /.idea
 /label
 /path
-__pycache__
+/weight
+!/weight/u-resnet18.pth
 .DS_Store
 *.kra~
 *.kra

@@ -1,5 +1,6 @@
 import cv2
 import os
+from pathlib import Path
 import time
 import numpy as np
 import torch
@@ -13,15 +14,16 @@ def image_segment(model, image_info, image):
 	org_h, org_w = image.shape[:2]
 	x, y, w, h = org_w // 2 - 224, org_h - 448, 448, 448
 	input_image = image[y:y + h, x:x + w]
-	# save input_image
-	cv2.imwrite("input_image.png", input_image)
 	input_tensor = torch.tensor(input_image).permute(2, 0, 1).unsqueeze(0).float()
 	input_tensor /= 255.0
 
 	# 이미지 전처리
 	preprocess = T.Compose([T.Resize((224, 224))])
 	input_tensor = preprocess(input_tensor)
-	input_tensor = input_tensor.to("mps")
+	# input_tensor = input_tensor.to(
+	# 	"cuda" if torch.cuda.is_available() else
+	# 	("mps" if torch.backends.mps.is_available() else "cpu")
+	# )
 
 	# 추론
 	start_time = time.time()
@@ -78,7 +80,7 @@ def play_images_as_video(folder_path, fps=15):
 	model.load_state_dict(torch.load(f"weight/u-{encoder_name}.pth"))
 	# model.load_state_dict(torch.load(f"weight/Unetresnet18.pth"))
 	model.eval()
-	model.to("mps")
+	model = model.to("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 	image_info = OriginImageInfo().automatic_init("source")
 
 	while True:
@@ -132,5 +134,5 @@ def play_images_as_video(folder_path, fps=15):
 
 
 # 사용 예시
-folder_path = "path"
+folder_path = Path(__file__).parent / "path"
 play_images_as_video(folder_path)

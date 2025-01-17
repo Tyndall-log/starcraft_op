@@ -1,6 +1,5 @@
+from pathlib import Path
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import numpy as np
 import random
 import segmentation_models_pytorch as smp
@@ -14,7 +13,7 @@ if __name__ == "__main__":
 	np.random.seed(seed)
 
 	auto_dataset = AutoDataset(
-		"../source",  # 데이터 소스 디렉터리
+		Path(__file__).parent / "../source",  # 데이터 소스 디렉터리
 		batch_size=16,  # 배치 크기
 		dataset_count=1000,
 		sample_count=2,
@@ -29,11 +28,10 @@ if __name__ == "__main__":
 		decoder_channels=(256, 128, 64, 32, 16),  # 디코더 채널 수
 		classes=auto_dataset.num_class,  # 클래스 수
 	)
-	model = model.to("mps")
-	print(model)
+	model = model.to("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
 	auto_train(
-		f"../weight/{model.name}.pth",
+		Path(__file__).parent / f"../weight/{model.name}.pth",
 		auto_dataset,
 		model,
 		epochs=100,

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import torch
 import torchvision.transforms as T
 import torch.optim as optim
@@ -118,7 +119,7 @@ class AutoDataset:
 
 	def __init__(
 			self,
-			image_source_path: str,
+			image_source_path: str | Path,
 			batch_size: int = 16,
 			data_split_ratio: float = 0.8,
 			observer_alpha: float | None = None,
@@ -163,7 +164,7 @@ class AutoDataset:
 
 
 def auto_train(
-		save_model_path: str,
+		save_model_path: str | Path,
 		auto_dataset: AutoDataset,
 		model: nn.Module,
 		epochs: int,

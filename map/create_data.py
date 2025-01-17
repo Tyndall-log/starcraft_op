@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import cv2
 import random
 import numpy as np
@@ -15,7 +16,7 @@ class OriginImageInfo:
 	scourge_list: list[np.ndarray] = []
 	scourge_color: tuple[int, int, int] = (0, 0, 0)
 
-	def automatic_init(self, path: str):
+	def automatic_init(self, path: str | Path):
 		if not os.path.isdir(path):
 			print("폴더가 아닙니다.")
 			return self

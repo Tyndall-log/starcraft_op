@@ -1,0 +1,17 @@
+{
+    "terminal.integrated.env.osx": {
+        "PYTHONPATH": "${workspaceFolder}"
+    },
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "${workspaceFolder}"
+    },
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "${workspaceFolder}"
+    },
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}"
+    ],
+    // "python.terminal.executeInFileDir": true, // 디버그에서 작동 안함
+    "terminal.integrated.cwd": "${fileDirname}",
+    "python.testing.cwd": "${workspaceFolder}"
+}
