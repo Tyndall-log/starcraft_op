@@ -78,19 +78,29 @@ def validate_one_epoch(model, val_loader, criterion, device):
 
 
 class DynamicSegmentationDataset(Dataset):
-	def __init__(self, image_info, observer_alpha=None, sample_count=1, transform=None, dataset_size=100):
+	def __init__(
+		self,
+		image_info,
+		observer_alpha=None,
+		sample_count=1,
+		transform=None,
+		target_size=None,
+		dataset_size=100
+	):
 		"""
 		매 에폭마다 동적으로 데이터를 생성하는 Dataset
 		:param image_info: 이미지 정보 (OriginImageInfo)
 		:param observer_alpha: 옵저버 알파 값
 		:param sample_count: 샘플 생성 개수
 		:param transform: 데이터 변환
+		:param target_size: 타겟 이미지 크기
 		:param dataset_size: Dataset 크기 (에폭마다 생성할 데이터 개수)
 		"""
 		self.image_info = image_info
 		self.observer_alpha = observer_alpha
 		self.sample_count = sample_count
 		self.transform = transform
+		self.target_size = target_size
 		self.dataset_size = dataset_size
 
 	def __len__(self):
@@ -101,8 +111,13 @@ class DynamicSegmentationDataset(Dataset):
 		params = {}
 		if self.observer_alpha is not None:
 			params['observer_alpha'] = self.observer_alpha
-
-		data, mask = make_data(self.image_info, sample_count=self.sample_count, **params)
+		if self.target_size is not None:
+			params['target_image_size'] = self.target_size
+		data, mask = make_data(
+			self.image_info,
+			sample_count=self.sample_count,
+			**params
+		)
 		data, mask = data[0], mask[0]  # make_data는 리스트를 반환하므로 첫 번째 데이터 사용
 
 		if self.transform:
@@ -118,19 +133,20 @@ class AutoDataset:
 	num_class: int
 
 	def __init__(
-			self,
-			image_source_path: str | Path,
-			batch_size: int = 16,
-			data_split_ratio: float = 0.8,
-			observer_alpha: float | None = None,
-			dataset_count: int = 100,
-			sample_count: int = 1,
-			transform: T.Compose = T.Compose([
-				T.Resize((224, 224)),  # 224x224로 리사이즈
-			]),
+		self,
+		image_source_path: str | Path,
+		batch_size: int = 16,
+		data_split_ratio: float = 0.8,
+		observer_alpha: float | None = None,
+		dataset_count: int = 100,
+		sample_count: int = 1,
+		# transform: T.Compose = T.Compose([
+		# 	T.Resize((224, 224)),  # 224x224로 리사이즈
+		# ]),
+		target_size: tuple[int, int] = (448, 448),
 	):
 		# 이미지 정보 초기화
-		self.image_info = OriginImageInfo().automatic_init(image_source_path)
+		self.image_info = OriginImageInfo().automatic_init(image_source_path, background_image_size=target_size)
 
 		# 검증 데이터 고정 생성
 		data_list, mask_list = [], []
@@ -140,14 +156,19 @@ class AutoDataset:
 			params = {}
 			if observer_alpha is not None:
 				params['observer_alpha'] = observer_alpha
-			data, mask = make_data(self.image_info, sample_count=sample_count, **params)
+			data, mask = make_data(
+				self.image_info,
+				sample_count=sample_count,
+				target_image_size=target_size,
+				**params,
+			)
 			data_list.extend(data)
 			mask_list.extend(mask)
 
 		self.num_class = mask_list[0].shape[0]
 
 		# 검증 데이터셋 생성
-		self.val_dataset = CustomSegmentationDataset(data_list, mask_list, transform)
+		self.val_dataset = CustomSegmentationDataset(data_list, mask_list)
 
 		# DataLoader 생성
 		self.val_loader = DataLoader(self.val_dataset, batch_size=batch_size, shuffle=False)
@@ -157,8 +178,8 @@ class AutoDataset:
 			image_info=self.image_info,
 			observer_alpha=observer_alpha,
 			sample_count=sample_count,
-			transform=transform,
-			dataset_size=int(dataset_count * data_split_ratio)
+			target_size=target_size,
+			dataset_size=int(dataset_count * data_split_ratio),
 		)
 		self.train_loader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True)
 

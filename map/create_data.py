@@ -1,4 +1,5 @@
 import os
+import math
 from pathlib import Path
 import cv2
 import random
@@ -9,18 +10,31 @@ import torch
 class OriginImageInfo:
 	background_list: list[np.ndarray] = []
 	background_color: tuple[int, int, int] = (0, 0, 0)
-	tile_list: list[np.ndarray] = []
+	tile_list: list[list[np.ndarray]] = []
 	tile_color_list: list[tuple[int, int, int]] = []
 	observer_list: list[np.ndarray] = []
 	observer_color: tuple[int, int, int] = (0, 0, 0)
 	scourge_list: list[np.ndarray] = []
 	scourge_color: tuple[int, int, int] = (0, 0, 0)
+	ui_list: list[np.ndarray] = []
+	ui_color: tuple[int, int, int] = (0, 0, 0)
 
-	def automatic_init(self, path: str | Path):
+	def automatic_init(
+		self,
+		path: str | Path,
+		background_image_size: tuple[int, int] = (448, 448)
+	):
+		"""
+		이미지 폴더에서 이미지를 자동으로 로드합니다.
+		:param path: 이미지 폴더 경로
+		:param background_image_size: 배경 이미지 크기(가로, 세로)
+		:return: 이미지 정보 객체
+		"""
 		if not os.path.isdir(path):
 			print("폴더가 아닙니다.")
 			return self
 		files = os.listdir(path)
+		files.sort()
 		for file in files:
 			sub_path = os.path.join(path, file)
 			if not sub_path.endswith((".png", ".jpg", ".jpeg")):
@@ -30,9 +44,12 @@ class OriginImageInfo:
 				if image.shape[:2] != (64, 64):
 					print("타일 이미지 크기가 64x64가 아닙니다.")
 					continue
-				self.tile_list.append(image)
-				average_color = image[:, :, :3].mean(axis=(0, 1)).astype(np.uint8)
-				self.tile_color_list.append(tuple(average_color))
+				number = int(file[4:].split("_")[0].split(".")[0]) - 1
+				if len(self.tile_list) <= number:
+					self.tile_list.append([])
+					average_color = image[:, :, :3].mean(axis=(0, 1)).astype(np.uint8)
+					self.tile_color_list.append(tuple(average_color))
+				self.tile_list[number].append(image)
 			elif file.startswith("observer"):
 				if image.shape[:2] != (64, 64):
 					print("옵저버 이미지 크기가 64x64가 아닙니다.")
@@ -45,9 +62,16 @@ class OriginImageInfo:
 					continue
 				self.scourge_list.append(image)
 				self.scourge_color = (0, 0, 255)
+			elif file.startswith("ui"):
+				if image.shape[:2] != (64, 64):
+					print("UI 이미지 크기가 64x64가 아닙니다.")
+					continue
+				self.ui_list.append(image)
+				self.ui_color = (0, 255, 0)
 			elif file.startswith("background"):
-				if image.shape[:2] != (448, 448):
-					print("배경 이미지 크기가 448x448가 아닙니다.")
+				ih, iw = image.shape[:2]
+				if iw < background_image_size[0] or ih < background_image_size[1]:
+					print(f"배경 이미지 크기가 {background_image_size}보다 작습니다.")
 					continue
 				self.background_list.append(image)
 				self.background_color = (0, 0, 0)
@@ -134,6 +158,7 @@ def make_data(
 	observer_count: int = 10,
 	observer_alpha: float = 0.5,
 	sample_count: int = 10,
+	target_image_size: tuple[int, int] = (448, 448),
 	# random_seed: None | int = None,
 ):
 	# if random_seed is not None:
@@ -142,63 +167,85 @@ def make_data(
 	data_list = []
 	mask_list = []
 
-	num_classes = 3 + len(image_info.tile_list)  # 배경, 옵저버, 스커지, 타일 클래스
+	tile_class_offset = 4
+	num_classes = tile_class_offset + len(image_info.tile_list)  # 배경, 옵저버, 스커지, UI, 타일 클래스
+	tiw = target_image_size[0]  # 타일 이미지 크기
+	tih = target_image_size[1]
 
-	# 1. 512x512 바탕 이미지 생성
-	canvas = np.zeros((512, 512, 4), dtype=np.uint8)  # RGBA
-	mask = np.zeros((num_classes, 512, 512), dtype=np.float32)
+	# 1. 바탕 이미지 생성
+	tw = 64  # 타일 크기
+	th = 64
+	biw = tiw + tw  # 배경 이미지 크기
+	bih = tih + th
+	canvas = np.zeros((bih, biw, 4), dtype=np.uint8)
+	mask = np.zeros((num_classes, bih, biw), dtype=np.float32)
+	mask[0, :, :] = 1.0  # 배경 클래스 채우기
 
 	# 2. 8x8 타일 랜덤 배치
-	tile_indices = list(range(len(image_info.tile_list) + 1))
-	random.shuffle(tile_indices)
-	for i in range(8):
-		for j in range(8):
-			tile_index = random.choice(tile_indices)
-			x, y = i * 64, j * 64
+	max_i = math.ceil(bih / th)
+	max_j = math.ceil(biw / tw)
+	for i in range(max_i):
+		for j in range(max_j):
+			tile_index = random.randrange(0, len(image_info.tile_list) + 1)
+			y, x = i * th, j * tw
 			if len(image_info.tile_list) <= tile_index:
-				mask[0, y:y+64, x:x+64] = 1.0  # 배경 클래스 채우기
 				continue
-			tile = image_info.tile_list[tile_index]
+			tile_list = image_info.tile_list[tile_index]
+			tile = random.choice(tile_list)
 			paste_image(
 				canvas, mask,
-				tile, (3 + tile_index, 1.0),
+				tile, (tile_class_offset + tile_index, 1.0),
 				(y, x),
 			)
 
-	# 3. 옵저버 랜덤 배치
-	for _ in range(observer_count):
-		observer = random.choice(image_info.observer_list)
-		x, y = random.randrange(0, 448), random.randrange(0, 448)
-		paste_image(
-			canvas, mask,
-			observer, (2, 1.0),
-			(y, x), (0.5, 0.5), observer_alpha,
-		)
-
 	for _ in range(sample_count):
-		# 4. 배경 선택 및 뷰 이동
-		sub_canvas = random.choice(image_info.background_list).copy()
-		sub_mask = np.zeros((num_classes, 448, 448), dtype=np.float32)
-		x = random.randrange(0, 64)
-		y = random.randrange(0, 64)
+		# 3. 배경 선택 및 뷰 이동
+		select_background = random.choice(image_info.background_list)
+		select_background_h, select_background_w = select_background.shape[:2]
+		rw = random.randint(0, select_background_w - tiw)
+		rh = random.randint(0, select_background_h - tih)
+		sub_canvas = select_background.copy()[rh:rh + tih, rw:rw + tiw]
+		sub_mask = np.zeros((num_classes, tih, tiw), dtype=np.float32)
+		x = random.randrange(0, tw)
+		y = random.randrange(0, th)
 		paste_image(
-			sub_canvas, sub_mask,
-			canvas, mask,
-			(-y, -x),
+			target_image=sub_canvas, target_mark=sub_mask,
+			source_image=canvas, source_mark=mask,
+			pos=(-y, -x),
 			blending_mode="surface",
 		)
 
-		# 5. 스커지 중앙 배치
+		# 4. 스커지 중앙 배치
 		scourge = random.choice(image_info.scourge_list)
-		x = random.randrange(0, 32) + 448 // 2
-		y = random.randrange(0, 32) + 448 // 2
+		x = random.randrange(0, tw // 2) + tiw // 2
+		y = random.randrange(0, th // 2) + tih // 2
+		paste_image(
+			target_image=sub_canvas, target_mark=sub_mask,
+			source_image=scourge, source_mark=(1, 1.0),
+			pos=(y, x), anker=(0.5, 0.5),
+		)
+
+		# 5. 옵저버 랜덤 배치
+		for _ in range(observer_count):
+			observer = random.choice(image_info.observer_list)
+			x, y = random.randrange(0, tiw), random.randrange(0, tih)
+			paste_image(
+				target_image=sub_canvas, target_mark=sub_mask,
+				source_image=observer, source_mark=(2, 1.0),
+				pos=(y, x), anker=(0.5, 0.5),
+				alpha=observer_alpha,
+			)
+
+		# 6. UI 랜덤 배치
+		ui = random.choice(image_info.ui_list)
+		x, y = random.randrange(0, tiw), random.randrange(0, tih)
 		paste_image(
 			sub_canvas, sub_mask,
-			scourge, (1, 0.5),
+			ui, (3, 1.0),
 			(y, x), (0.5, 0.5),
 		)
 
-		# 6. 결과 저장
+		# 7. 결과 저장
 		data_list.append(torch.tensor(sub_canvas[:, :, :3].transpose(2, 0, 1) / 255.0, dtype=torch.float32))  # RGB 텐서
 		sub_mask /= sum(sub_mask)  # 정규화
 		mask_list.append(torch.tensor(sub_mask))
@@ -208,7 +255,7 @@ def make_data(
 
 def get_mask_visual(image_info: OriginImageInfo, mask: np.ndarray):
 	colors = np.array(
-		[image_info.background_color, image_info.scourge_color, image_info.observer_color] +
+		[image_info.background_color, image_info.scourge_color, image_info.observer_color, image_info.ui_color] +
 		image_info.tile_color_list,
 		dtype=np.uint8
 	)
@@ -219,21 +266,25 @@ if __name__ == "__main__":
 	import time
 	random.seed(0)
 
+	target_image_size = (927, 576)
+	# target_image_size = (448, 448)
+
 	# 데이터 로드 및 생성
-	image_info = OriginImageInfo().automatic_init("../source")
+	image_info = OriginImageInfo().automatic_init("../source", background_image_size=target_image_size)
 	start_time = time.time()
 	data_list, mask_list = [], []
 	for _ in range(10):
-		a, b = make_data(image_info, observer_alpha=0.5, sample_count=3)
+		a, b = make_data(image_info, observer_alpha=0.5, sample_count=3, target_image_size=target_image_size)
 		data_list.extend(a)
 		mask_list.extend(b)
 	print(f"데이터 생성 시간: {time.time() - start_time:.3f}초")
+	cv2.namedWindow("Image", cv2.WINDOW_NORMAL)
 
 	# 데이터 확인
 	for i, (data, mask) in enumerate(zip(data_list, mask_list)):
 		data_np = (data.numpy().transpose(1, 2, 0) * 255).astype(np.uint8)  # RGB 데이터
 		colors = np.array(
-			[image_info.background_color, image_info.scourge_color, image_info.observer_color] +
+			[image_info.background_color, image_info.scourge_color, image_info.observer_color, image_info.ui_color] +
 			image_info.tile_color_list,
 			dtype=np.uint8
 		)
@@ -241,7 +292,8 @@ if __name__ == "__main__":
 
 		mask_visual = np.tensordot(mask_np.transpose(1, 2, 0), colors, axes=([2], [0])).astype(np.uint8)
 		concat = np.concatenate((data_np, mask_visual), axis=1)
-		cv2.imshow(f"Image {i}", concat)
+		cv2.imshow(f"Image", concat)
+		# cv2.resizeWindow("Image", (concat.shape[1] // 2, concat.shape[0] // 2))
 
 		stop_flag = False
 		while True:
@@ -251,6 +303,6 @@ if __name__ == "__main__":
 				break
 			elif key != -1:
 				break
-		cv2.destroyAllWindows()
+		# cv2.destroyAllWindows()
 		if stop_flag:
 			break

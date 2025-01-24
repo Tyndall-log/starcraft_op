@@ -1,7 +1,6 @@
 __pycache__
 /.idea
 /.vscode
-/label
 /path
 /weight/**
 !/.vscode/settings.json

@@ -8,19 +8,18 @@ from map.create_data import OriginImageInfo, get_mask_visual
 import torchvision.transforms as T
 import segmentation_models_pytorch as smp
 
+from train.unet_hd import UNet
+
 
 def image_segment(model, image_info, image):
 	# 정사각형 이미지로 크롭
 	org_h, org_w = image.shape[:2]
-	# x, y, w, h = org_w // 2 - 224, org_h - 448, 448, 448
-	x, y, w, h = 0, 0, 1216, 576
+	x, y, w, h = 0, 0, org_w, org_h
 	input_image = image[y:y + h, x:x + w]
 	input_tensor = torch.tensor(input_image).permute(2, 0, 1).unsqueeze(0).float()
 	input_tensor /= 255.0
 
 	# 이미지 전처리
-	preprocess = T.Compose([T.Resize((h // 2, w // 2))])
-	input_tensor = preprocess(input_tensor)
 	input_tensor = input_tensor.to(
 		"cuda" if torch.cuda.is_available() else
 		("mps" if torch.backends.mps.is_available() else "cpu")
@@ -33,17 +32,12 @@ def image_segment(model, image_info, image):
 	if isinstance(outputs, dict):
 		outputs = outputs['out']
 	mask = outputs.squeeze().cpu().detach().numpy()
-	# mask = np.clip(mask, 0, 1)
-	# mask /= np.sum(mask, axis=0, keepdims=True)
 	mask = np.exp(mask) / np.sum(np.exp(mask), axis=0, keepdims=True)
+	# mask /= np.sum(mask, axis=0, keepdims=True)
 	mask_visual = get_mask_visual(image_info, mask)
-
-	# 업샘플링
-	mask_visual = cv2.resize(mask_visual, (w, h), interpolation=cv2.INTER_NEAREST)
 
 	output_image = np.zeros_like(image)
 	output_image[y:y + h, x:x + w] = mask_visual
-	# image = image[y:y + h, x:x + w]
 	return output_image
 
 
@@ -68,17 +62,9 @@ def play_images_as_video(folder_path, fps=15):
 	# model.load_state_dict(torch.load("lraspp_mobilenet_v3_large_best.pth"))
 	# model = models.deeplabv3_resnet50(weights=None, num_classes=num_classes)
 	# model.load_state_dict(torch.load("deeplabv3_resnet50_best.pth"), strict=False)
-	encoder_name = "resnet18"
-	model = smp.Unet(
-		encoder_name=encoder_name,
-		encoder_depth=5,  # 디코더에서 사용하는 단계 수
-		encoder_weights="imagenet",  # ImageNet으로 사전 학습된 가중치 사용
-		# decoder_segmentation_channels=256,
-		# decoder_channels=(32, 16),  # 디코더 채널 수
-		classes=num_classes,
-		activation=None,
-	)
-	model.load_state_dict(torch.load(f"weight/u-{encoder_name}2.pth"))
+	model_weight_name = "u-resnet_hd"
+	model = UNet(num_classes=num_classes)
+	model.load_state_dict(torch.load(f"weight/{model_weight_name}.pth"))
 	# model.load_state_dict(torch.load(f"weight/Unetresnet18.pth"))
 	model.eval()
 	model = model.to("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))

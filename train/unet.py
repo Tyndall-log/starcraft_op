@@ -15,7 +15,7 @@ if __name__ == "__main__":
 	auto_dataset = AutoDataset(
 		Path(__file__).parent / "../source",  # 데이터 소스 디렉터리
 		batch_size=16,  # 배치 크기
-		dataset_count=1000,
+		dataset_count=100,
 		sample_count=2,
 	)
 
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 	model = model.to("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
 	auto_train(
-		Path(__file__).parent / f"../weight/{model.name}.pth",
+		Path(__file__).parent / f"../weight/{model.name}2.pth",
 		auto_dataset,
 		model,
 		epochs=100,
